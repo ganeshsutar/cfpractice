@@ -1,5 +1,13 @@
+import * as vscode from 'vscode';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
+import * as fs from 'fs';
+import * as util from 'util';
+import * as path from 'path';
+import * as templateFile from './files';
+
+const mkdir = util.promisify(fs.mkdir);
+const writeFile = util.promisify(fs.writeFile);
 
 export function getUrl(input: string | undefined) : string | null {
     if(!input) return null;
@@ -53,4 +61,36 @@ export function downloadProblem(url: string) {
         return {info, tests};
     });
 };
+
+export function createDirectory(folderPath: string, data: any) {
+    let problemDir = path.join(folderPath, data.info.dirname);
+    console.log(data);
+    if(!data.info.title) {
+        throw 'Unable to get the title';
+    }
+
+    return mkdir(problemDir).then(() => {
+        let mainFile = path.join(problemDir, 'Main.java');
+        let mainFilePromise = writeFile(mainFile, templateFile.MainFile);
+        let inputs: any[] = [];
+        let outputs: any[] = [];
+
+        data.tests.inputs.each((index: any, item: string) => {
+            inputs.push(writeFile(path.join(problemDir, `input-${index}.txt`), item + ''));
+        });
+
+        data.tests.outputs.each((index: any, item: string) => {
+            outputs.push(writeFile(path.join(problemDir, `output-${index}.txt`), item + ''));
+        });
+
+        return Promise.all([
+            mainFilePromise,
+            Promise.all(inputs),
+            Promise.all(outputs)
+        ]).then(() => {
+            let mainUri = vscode.Uri.file(mainFile);
+            return vscode.window.showTextDocument(mainUri);
+        });
+    });
+}
 
